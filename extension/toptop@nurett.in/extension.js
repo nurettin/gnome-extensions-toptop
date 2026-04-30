@@ -2,7 +2,7 @@ import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-import {CpuSampler, MemorySampler, NetworkSampler} from './samplers.js';
+import {CpuSampler, MemorySampler, SwapSampler, NetworkSampler} from './samplers.js';
 import {Indicator} from './indicators.js';
 
 function formatBytes(bps) {
@@ -44,10 +44,23 @@ const SPECS = [
         },
     },
     {
+        kind: 'swap',
+        role: 'toptop-swap',
+        showKey: 'show-swap',
+        position: 2,
+        sampler: () => new SwapSampler(),
+        options: {
+            fixedMax: 100,
+            color: [1.00, 0.85, 0.40],
+            initialLabel: '  --%',
+            format: v => `${v == null ? ' --' : v.toFixed(0).padStart(3, ' ')}%`,
+        },
+    },
+    {
         kind: 'network',
         role: 'toptop-network',
         showKey: 'show-network',
-        position: 2,
+        position: 3,
         sampler: () => new NetworkSampler(),
         options: {
             color: [1.00, 0.70, 0.40],
@@ -75,6 +88,7 @@ export default class TopTopExtension extends Extension {
             this._settings.connect('changed::graph-width', () => this._applyGraphWidth()),
             this._settings.connect('changed::show-cpu', () => this._rebuildIndicators()),
             this._settings.connect('changed::show-memory', () => this._rebuildIndicators()),
+            this._settings.connect('changed::show-swap', () => this._rebuildIndicators()),
             this._settings.connect('changed::show-network', () => this._rebuildIndicators()),
         ];
 

@@ -25,6 +25,10 @@
       <default>true</default>
       <summary>Show memory indicator</summary>
     </key>
+    <key name="show-swap" type="b">
+      <default>true</default>
+      <summary>Show swap indicator</summary>
+    </key>
     <key name="show-network" type="b">
       <default>true</default>
       <summary>Show network indicator</summary>

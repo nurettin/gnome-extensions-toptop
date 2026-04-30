@@ -36,18 +36,31 @@ export class CpuSampler {
     }
 }
 
+function parseMeminfo() {
+    const text = readProc('/proc/meminfo');
+    if (!text) return null;
+    const m = {};
+    for (const line of text.split('\n')) {
+        const match = line.match(/^(\w+):\s+(\d+)/);
+        if (match) m[match[1]] = parseInt(match[2], 10);
+    }
+    return m;
+}
+
 export class MemorySampler {
     sample() {
-        const text = readProc('/proc/meminfo');
-        if (!text) return null;
-        const m = {};
-        for (const line of text.split('\n')) {
-            const match = line.match(/^(\w+):\s+(\d+)/);
-            if (match) m[match[1]] = parseInt(match[2], 10);
-        }
-        if (!m.MemTotal) return null;
+        const m = parseMeminfo();
+        if (!m || !m.MemTotal) return null;
         const avail = m.MemAvailable ?? (m.MemFree + (m.Buffers || 0) + (m.Cached || 0));
         return ((m.MemTotal - avail) / m.MemTotal) * 100;
+    }
+}
+
+export class SwapSampler {
+    sample() {
+        const m = parseMeminfo();
+        if (!m || !m.SwapTotal) return null;
+        return ((m.SwapTotal - (m.SwapFree ?? 0)) / m.SwapTotal) * 100;
     }
 }
 
