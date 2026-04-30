@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <enum id="in.nurett.toptop.IndicatorKind">
+    <value nick="cpu" value="0"/>
+    <value nick="memory" value="1"/>
+    <value nick="network" value="2"/>
+  </enum>
+
+  <schema id="in.nurett.toptop" path="/in/nurett/toptop/">
+    <key name="interval-ms" type="i">
+      <default>1000</default>
+      <range min="200" max="10000"/>
+      <summary>Sampling interval in milliseconds</summary>
+    </key>
+    <key name="history-size" type="i">
+      <default>60</default>
+      <range min="10" max="600"/>
+      <summary>Number of samples retained for sparklines</summary>
+    </key>
+    <key name="show-cpu" type="b">
+      <default>true</default>
+      <summary>Show CPU indicator</summary>
+    </key>
+    <key name="show-memory" type="b">
+      <default>true</default>
+      <summary>Show memory indicator</summary>
+    </key>
+    <key name="show-network" type="b">
+      <default>true</default>
+      <summary>Show network indicator</summary>
+    </key>
+    <key name="graph-width" type="i">
+      <default>60</default>
+      <range min="20" max="240"/>
+      <summary>Sparkline width in pixels</summary>
+    </key>
+  </schema>
+</schemalist>
