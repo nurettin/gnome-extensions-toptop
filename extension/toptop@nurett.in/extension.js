@@ -26,6 +26,7 @@ const SPECS = [
         options: {
             fixedMax: 100,
             color: [0.40, 0.85, 1.00],
+            title: 'CPU',
             initialLabel: '  --%',
             format: v => `${v == null ? ' --' : v.toFixed(0).padStart(3, ' ')}%`,
         },
@@ -39,6 +40,7 @@ const SPECS = [
         options: {
             fixedMax: 100,
             color: [0.60, 1.00, 0.60],
+            title: 'MEM',
             initialLabel: '  --%',
             format: v => `${v == null ? ' --' : v.toFixed(0).padStart(3, ' ')}%`,
         },
@@ -52,6 +54,7 @@ const SPECS = [
         options: {
             fixedMax: 100,
             color: [1.00, 0.85, 0.40],
+            title: 'SWP',
             initialLabel: '  --%',
             format: v => `${v == null ? ' --' : v.toFixed(0).padStart(3, ' ')}%`,
         },
@@ -64,6 +67,7 @@ const SPECS = [
         sampler: () => new NetworkSampler(),
         options: {
             color: [1.00, 0.70, 0.40],
+            title: 'NET',
             initialLabel: '   --↓    --↑',
             format: v => v == null
                 ? '   --↓    --↑'

@@ -32,6 +32,7 @@ class Indicator extends PanelMenu.Button {
         this._format = options.format;
         this._history = new RingBuffer(options.historySize);
         this._color = options.color;
+        this._title = options.title ?? '';
         this._peak = 0;
         this._holdLeft = 0;
         this._holdSamples = options.holdSamples ?? 3;
@@ -128,6 +129,18 @@ class Indicator extends PanelMenu.Button {
                 else cr.lineTo(x, y);
             }
             cr.stroke();
+
+            if (this._title) {
+                cr.selectFontFace('monospace', 0, 1);
+                cr.setFontSize(8);
+                const ext = cr.textExtents(this._title);
+                cr.setSourceRGBA(0, 0, 0, 0.55);
+                cr.rectangle(2, 1, ext.width + 4, ext.height + 3);
+                cr.fill();
+                cr.setSourceRGBA(1, 1, 1, 0.85);
+                cr.moveTo(4, 1 + ext.height + 1);
+                cr.showText(this._title);
+            }
         } finally {
             cr.$dispose();
         }
