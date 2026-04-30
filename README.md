@@ -25,8 +25,8 @@ If that is a problem for you, fork it.
 ## Install
 
 ```bash
-git clone https://github.com/nurettin/toptop.git
-ln -s "$PWD/toptop/extension/toptop@nurett.in" \
+git clone https://github.com/nurettin/gnome-extensions-toptop.git
+ln -s "$PWD/gnome-extensions-toptop/extension/toptop@nurett.in" \
       ~/.local/share/gnome-shell/extensions/toptop@nurett.in
 glib-compile-schemas \
       ~/.local/share/gnome-shell/extensions/toptop@nurett.in/schemas/
