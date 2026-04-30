@@ -2,7 +2,7 @@
 
 CPU, memory, and network indicators with sparklines in the GNOME 50 top bar.
 
-![screenshot placeholder](docs/screenshot.png)
+![screenshot](docs/screenshot.png)
 
 ## Disclaimer
 
@@ -18,7 +18,7 @@ If that is a problem for you, fork it.
 
 ## What it does
 
-- Three panel indicators: CPU usage (%), memory usage (%), network throughput (rx + tx, sparkline of the sum)
+- Four panel indicators: CPU usage (%), memory usage (%), swap usage (%), network throughput (rx + tx, sparkline of the sum)
 - Sticky-peak-with-decay autoscaling on the network graph so spikes are visible without the baseline jittering
 - Configurable sample interval, history length, graph width, per-indicator visibility
 
@@ -42,6 +42,7 @@ gsettings set in.nurett.toptop history-size 60       # samples retained (10..600
 gsettings set in.nurett.toptop graph-width 60        # sparkline width in px (20..240)
 gsettings set in.nurett.toptop show-cpu true
 gsettings set in.nurett.toptop show-memory true
+gsettings set in.nurett.toptop show-swap true
 gsettings set in.nurett.toptop show-network true
 ```
 
