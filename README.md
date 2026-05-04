@@ -39,7 +39,7 @@ gnome-extensions enable toptop@nurett.in
 ```bash
 gsettings set in.nurett.toptop interval-ms 1000      # sample period (200..10000)
 gsettings set in.nurett.toptop history-size 60       # samples retained (10..600)
-gsettings set in.nurett.toptop graph-width 60        # sparkline width in px (20..240)
+gsettings set in.nurett.toptop graph-width 36        # sparkline width in px (20..240)
 gsettings set in.nurett.toptop show-cpu true
 gsettings set in.nurett.toptop show-memory true
 gsettings set in.nurett.toptop show-swap true

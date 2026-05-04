@@ -34,7 +34,7 @@
       <summary>Show network indicator</summary>
     </key>
     <key name="graph-width" type="i">
-      <default>60</default>
+      <default>36</default>
       <range min="20" max="240"/>
       <summary>Sparkline width in pixels</summary>
     </key>
