@@ -1,7 +1,7 @@
 {
   "uuid": "toptop@nurett.in",
   "name": "TopTop System Monitor",
-  "description": "CPU, memory, and network indicators with sparklines in the GNOME top bar.",
+  "description": "CPU, memory, temperature, fan, and network indicators in the GNOME top bar.",
   "shell-version": ["50"],
   "url": "https://github.com/nurettin/gnome-extensions-toptop",
   "settings-schema": "in.nurett.toptop",

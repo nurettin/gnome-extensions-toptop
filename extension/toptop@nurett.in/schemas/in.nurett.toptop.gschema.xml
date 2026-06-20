@@ -2,8 +2,11 @@
 <schemalist>
   <enum id="in.nurett.toptop.IndicatorKind">
     <value nick="cpu" value="0"/>
-    <value nick="memory" value="1"/>
-    <value nick="network" value="2"/>
+    <value nick="cpu-temperature" value="1"/>
+    <value nick="memory" value="2"/>
+    <value nick="swap" value="3"/>
+    <value nick="network" value="4"/>
+    <value nick="fan-speed" value="5"/>
   </enum>
 
   <schema id="in.nurett.toptop" path="/in/nurett/toptop/">
@@ -21,6 +24,10 @@
       <default>true</default>
       <summary>Show CPU indicator</summary>
     </key>
+    <key name="show-cpu-temperature" type="b">
+      <default>true</default>
+      <summary>Show CPU temperature indicator</summary>
+    </key>
     <key name="show-memory" type="b">
       <default>true</default>
       <summary>Show memory indicator</summary>
@@ -32,6 +39,10 @@
     <key name="show-network" type="b">
       <default>true</default>
       <summary>Show network indicator</summary>
+    </key>
+    <key name="show-fan-speed" type="b">
+      <default>true</default>
+      <summary>Show fan speed indicator</summary>
     </key>
     <key name="graph-width" type="i">
       <default>36</default>

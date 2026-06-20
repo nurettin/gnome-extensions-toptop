@@ -1,14 +1,8 @@
 .toptop-box {
-    spacing: 4px;
-}
-
-.toptop-label {
-    font-family: monospace;
-    font-size: 11px;
-    padding-right: 2px;
+    spacing: 0;
 }
 
 .toptop-graph {
-    margin-left: 2px;
-    margin-right: 4px;
+    margin-left: 1px;
+    margin-right: 3px;
 }

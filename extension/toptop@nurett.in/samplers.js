@@ -3,9 +3,56 @@ import GLib from 'gi://GLib';
 const decoder = new TextDecoder();
 
 function readProc(path) {
-    const [ok, bytes] = GLib.file_get_contents(path);
-    if (!ok) return null;
-    return decoder.decode(bytes);
+    try {
+        const [ok, bytes] = GLib.file_get_contents(path);
+        if (!ok) return null;
+        return decoder.decode(bytes);
+    } catch (e) {
+        return null;
+    }
+}
+
+function readNumber(path) {
+    const text = readProc(path);
+    if (text == null) return null;
+    const value = Number.parseFloat(text.trim());
+    return Number.isFinite(value) ? value : null;
+}
+
+function readLabel(path, fallback) {
+    const text = readProc(path);
+    if (text == null) return fallback;
+    const label = text.trim();
+    return label.length > 0 ? label : fallback;
+}
+
+function listDir(path) {
+    try {
+        const dir = GLib.Dir.open(path, 0);
+        const names = [];
+        let name;
+        while ((name = dir.read_name()) !== null) names.push(name);
+        dir.close();
+        return names;
+    } catch (e) {
+        return [];
+    }
+}
+
+const HWMON_DIR = '/sys/class/hwmon';
+
+function hwmonDirs() {
+    return listDir(HWMON_DIR)
+        .filter(name => name.startsWith('hwmon'))
+        .map(name => `${HWMON_DIR}/${name}`);
+}
+
+function numberedInputs(dir, prefix) {
+    const re = new RegExp(`^${prefix}(\\d+)_input$`);
+    return listDir(dir)
+        .map(name => name.match(re))
+        .filter(match => match != null)
+        .map(match => match[1]);
 }
 
 export class CpuSampler {
@@ -61,6 +108,63 @@ export class SwapSampler {
         const m = parseMeminfo();
         if (!m || !m.SwapTotal) return null;
         return ((m.SwapTotal - (m.SwapFree ?? 0)) / m.SwapTotal) * 100;
+    }
+}
+
+function cpuTemperatureTier(chipName, label) {
+    const chip = chipName.toLowerCase();
+    const normalizedLabel = label.toLowerCase();
+    if (['k10temp', 'coretemp', 'zenpower'].includes(chip)) return 0;
+    if (normalizedLabel === 'cpu' || normalizedLabel.startsWith('core '))
+        return 1;
+    if (normalizedLabel.startsWith('package id ') || normalizedLabel === 'tctl' || normalizedLabel === 'tdie')
+        return 1;
+    if (chip === 'thinkpad' && normalizedLabel === 'temp1')
+        return 2;
+    if (chip === 'acpitz')
+        return 3;
+    return -1;
+}
+
+export class CpuTemperatureSampler {
+    sample() {
+        const candidatesByTier = [[], [], [], []];
+        for (const dir of hwmonDirs()) {
+            const chipName = readLabel(`${dir}/name`, '');
+            for (const index of numberedInputs(dir, 'temp')) {
+                const input = `${dir}/temp${index}_input`;
+                const label = readLabel(`${dir}/temp${index}_label`, `temp${index}`);
+                const tier = cpuTemperatureTier(chipName, label);
+                if (tier < 0) continue;
+
+                const milliCelsius = readNumber(input);
+                if (milliCelsius == null) continue;
+                const celsius = milliCelsius / 1000;
+                if (celsius <= 0 || celsius > 150) continue;
+                candidatesByTier[tier].push(celsius);
+            }
+        }
+
+        for (const candidates of candidatesByTier) {
+            if (candidates.length > 0)
+                return Math.max(...candidates);
+        }
+        return null;
+    }
+}
+
+export class FanSpeedSampler {
+    sample() {
+        const speeds = [];
+        for (const dir of hwmonDirs()) {
+            for (const index of numberedInputs(dir, 'fan')) {
+                const rpm = readNumber(`${dir}/fan${index}_input`);
+                if (rpm == null || rpm < 0) continue;
+                speeds.push(rpm);
+            }
+        }
+        if (speeds.length === 0) return null;
+        return Math.max(...speeds);
     }
 }
 

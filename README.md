@@ -1,6 +1,6 @@
 # toptop
 
-CPU, memory, and network indicators with sparklines in the GNOME 50 top bar.
+CPU, memory, temperature, fan, and network indicators in the GNOME 50 top bar.
 
 ![screenshot](docs/screenshot.png)
 
@@ -18,7 +18,8 @@ If that is a problem for you, fork it.
 
 ## What it does
 
-- Four panel indicators: CPU usage (%), memory usage (%), swap usage (%), network throughput (rx + tx, sparkline of the sum)
+- Six panel indicators: CPU usage (%), CPU temperature, memory usage (%), swap usage (%), network throughput (rx + tx, sparkline of the sum), fan speed
+- Fan speed uses a speedometer gauge instead of a sparkline
 - Sticky-peak-with-decay autoscaling on the network graph so spikes are visible without the baseline jittering
 - Configurable sample interval, history length, graph width, per-indicator visibility
 
@@ -41,9 +42,11 @@ gsettings set in.nurett.toptop interval-ms 1000      # sample period (200..10000
 gsettings set in.nurett.toptop history-size 60       # samples retained (10..600)
 gsettings set in.nurett.toptop graph-width 36        # sparkline width in px (20..240)
 gsettings set in.nurett.toptop show-cpu true
+gsettings set in.nurett.toptop show-cpu-temperature true
 gsettings set in.nurett.toptop show-memory true
 gsettings set in.nurett.toptop show-swap true
 gsettings set in.nurett.toptop show-network true
+gsettings set in.nurett.toptop show-fan-speed true
 ```
 
 ## Requirements

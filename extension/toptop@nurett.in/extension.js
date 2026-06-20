@@ -2,18 +2,41 @@ import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-import {CpuSampler, MemorySampler, SwapSampler, NetworkSampler} from './samplers.js';
+import {
+    CpuSampler,
+    CpuTemperatureSampler,
+    MemorySampler,
+    SwapSampler,
+    NetworkSampler,
+    FanSpeedSampler,
+} from './samplers.js';
 import {Indicator} from './indicators.js';
 
 function formatBytes(bps) {
     const units = ['B', 'K', 'M', 'G'];
     let v = bps, i = 0;
-    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    while (v >= 999.5 && i < units.length - 1) { v /= 1024; i++; }
     let s;
-    if (v >= 100) s = v.toFixed(0);
-    else if (v >= 10) s = v.toFixed(1);
-    else s = v.toFixed(2);
-    return `${s.padStart(4, ' ')}${units[i]}`;
+    if (i === 0) s = v.toFixed(0);
+    else if (v >= 10) s = v.toFixed(0);
+    else s = v.toFixed(1);
+    return `${s}${units[i]}`;
+}
+
+function formatPercent(percent) {
+    return `${percent == null ? '--' : percent.toFixed(0)}%`;
+}
+
+function formatTemperature(celsius) {
+    return `${celsius == null ? '--' : celsius.toFixed(0)}C`;
+}
+
+function formatRpm(rpm) {
+    if (rpm == null) return '--R';
+    const rounded = Math.round(rpm);
+    if (rounded >= 10000)
+        return `${(rounded / 1000).toFixed(0)}kR`;
+    return `${rounded}R`;
 }
 
 const SPECS = [
@@ -27,51 +50,83 @@ const SPECS = [
             fixedMax: 100,
             color: [0.40, 0.85, 1.00],
             title: 'CPU',
-            initialLabel: '  --%',
-            format: v => `${v == null ? ' --' : v.toFixed(0).padStart(3, ' ')}%`,
+            initialLabel: '--%',
+            format: formatPercent,
+        },
+    },
+    {
+        kind: 'cpu-temperature',
+        role: 'toptop-cpu-temperature',
+        showKey: 'show-cpu-temperature',
+        position: 1,
+        sampler: () => new CpuTemperatureSampler(),
+        options: {
+            fixedMax: 100,
+            color: [1.00, 0.45, 0.45],
+            title: 'TMP',
+            initialLabel: '--C',
+            format: formatTemperature,
         },
     },
     {
         kind: 'memory',
         role: 'toptop-memory',
         showKey: 'show-memory',
-        position: 1,
+        position: 2,
         sampler: () => new MemorySampler(),
         options: {
             fixedMax: 100,
             color: [0.60, 1.00, 0.60],
             title: 'MEM',
-            initialLabel: '  --%',
-            format: v => `${v == null ? ' --' : v.toFixed(0).padStart(3, ' ')}%`,
+            initialLabel: '--%',
+            format: formatPercent,
         },
     },
     {
         kind: 'swap',
         role: 'toptop-swap',
         showKey: 'show-swap',
-        position: 2,
+        position: 3,
         sampler: () => new SwapSampler(),
         options: {
             fixedMax: 100,
             color: [1.00, 0.85, 0.40],
             title: 'SWP',
-            initialLabel: '  --%',
-            format: v => `${v == null ? ' --' : v.toFixed(0).padStart(3, ' ')}%`,
+            initialLabel: '--%',
+            format: formatPercent,
         },
     },
     {
         kind: 'network',
         role: 'toptop-network',
         showKey: 'show-network',
-        position: 3,
+        position: 4,
         sampler: () => new NetworkSampler(),
         options: {
             color: [1.00, 0.70, 0.40],
             title: 'NET',
-            initialLabel: '   --↓    --↑',
+            minGraphWidth: 86,
+            initialLabel: '--↓ --↑',
             format: v => v == null
-                ? '   --↓    --↑'
+                ? '--↓ --↑'
                 : `${formatBytes(v.rxBps)}↓ ${formatBytes(v.txBps)}↑`,
+        },
+    },
+    {
+        kind: 'fan-speed',
+        role: 'toptop-fan-speed',
+        showKey: 'show-fan-speed',
+        position: 5,
+        sampler: () => new FanSpeedSampler(),
+        options: {
+            minPeak: 5000,
+            minGraphWidth: 48,
+            color: [0.75, 0.80, 1.00],
+            title: 'FAN',
+            initialLabel: '--R',
+            drawMode: 'speedometer',
+            labelPosition: 'top-right',
+            format: formatRpm,
         },
     },
 ];
@@ -90,10 +145,7 @@ export default class TopTopExtension extends Extension {
             this._settings.connect('changed::interval-ms', () => this._restartTimer()),
             this._settings.connect('changed::history-size', () => this._applyHistorySize()),
             this._settings.connect('changed::graph-width', () => this._applyGraphWidth()),
-            this._settings.connect('changed::show-cpu', () => this._rebuildIndicators()),
-            this._settings.connect('changed::show-memory', () => this._rebuildIndicators()),
-            this._settings.connect('changed::show-swap', () => this._rebuildIndicators()),
-            this._settings.connect('changed::show-network', () => this._rebuildIndicators()),
+            ...SPECS.map(spec => this._settings.connect(`changed::${spec.showKey}`, () => this._rebuildIndicators())),
         ];
 
         this._startTimer();
