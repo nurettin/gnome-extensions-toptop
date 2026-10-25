@@ -1,4 +1,5 @@
 import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
 
 const decoder = new TextDecoder();
 
@@ -40,6 +41,10 @@ function listDir(path) {
 }
 
 const HWMON_DIR = '/sys/class/hwmon';
+const PROCESS_SAMPLE_MIN_US = 750_000;
+const PROCESS_ROWS = 3;
+const PROC_PID_RE = /^\d+$/;
+const VM_RSS_RE = /^VmRSS:\s+(\d+)\s+kB$/m;
 
 function hwmonDirs() {
     return listDir(HWMON_DIR)
@@ -55,21 +60,166 @@ function numberedInputs(dir, prefix) {
         .map(match => match[1]);
 }
 
-export class CpuSampler {
+function readCpuTimes() {
+    const text = readProc('/proc/stat');
+    if (!text) return null;
+    const line = text.split('\n', 1)[0];
+    const parts = line.trim().split(/\s+/).slice(1).map(Number);
+    if (parts.length < 4) return null;
+    const idle = parts[3] + (parts[4] || 0);
+    const total = parts.reduce((a, b) => a + b, 0);
+    return {idle, total};
+}
+
+function parseProcessStat(pid, text) {
+    const open = text.indexOf('(');
+    const close = text.lastIndexOf(')');
+    if (open < 0 || close <= open) return null;
+
+    const fields = text.slice(close + 1).trim().split(/\s+/);
+    if (fields.length < 20) return null;
+
+    const utime = Number.parseInt(fields[11], 10);
+    const stime = Number.parseInt(fields[12], 10);
+    if (!Number.isFinite(utime) || !Number.isFinite(stime)) return null;
+
+    const name = text.slice(open + 1, close).trim() || String(pid);
+    const startTime = fields[19];
+    return {
+        name,
+        key: `${pid}\0${startTime}`,
+        cpuTicks: utime + stime,
+    };
+}
+
+function readProcessRssKb(pid) {
+    const text = readProc(`/proc/${pid}/status`);
+    if (!text) return 0;
+    const match = text.match(VM_RSS_RE);
+    if (match == null) return 0;
+    const rssKb = Number.parseInt(match[1], 10);
+    return Number.isFinite(rssKb) ? rssKb : 0;
+}
+
+function readProcesses() {
+    const processes = [];
+    for (const name of listDir('/proc')) {
+        if (!PROC_PID_RE.test(name)) continue;
+
+        const statText = readProc(`/proc/${name}/stat`);
+        if (statText == null) continue;
+
+        const process = parseProcessStat(name, statText);
+        if (process == null) continue;
+
+        process.rssKb = readProcessRssKb(name);
+        processes.push(process);
+    }
+    return processes;
+}
+
+function topRows(rows, valueOf) {
+    return rows
+        .filter(row => valueOf(row) > 0)
+        .sort((a, b) => valueOf(b) - valueOf(a))
+        .slice(0, PROCESS_ROWS);
+}
+
+export class ProcessSampler {
     constructor() {
+        this._prevTotalTicks = null;
+        this._prevTicksByProcess = new Map();
+        this._lastSampleAt = 0;
+        this._snapshot = {
+            cpu: {rows: [], updatedAt: 0},
+            memory: {rows: [], updatedAt: 0},
+        };
+    }
+
+    sample(totalTicks) {
+        const now = GLib.get_monotonic_time();
+        if (now - this._lastSampleAt < PROCESS_SAMPLE_MIN_US)
+            return this._snapshot;
+
+        const processes = readProcesses();
+        const snapshot = {
+            cpu: {
+                rows: this._cpuRows(processes, totalTicks),
+                updatedAt: now,
+            },
+            memory: {
+                rows: this._memoryRows(processes),
+                updatedAt: now,
+            },
+        };
+
+        this._prevTicksByProcess = new Map(
+            processes.map(process => [process.key, process.cpuTicks])
+        );
+        if (totalTicks != null)
+            this._prevTotalTicks = totalTicks;
+        this._lastSampleAt = now;
+        this._snapshot = snapshot;
+        return snapshot;
+    }
+
+    _cpuRows(processes, totalTicks) {
+        if (totalTicks == null || this._prevTotalTicks == null)
+            return [];
+
+        const totalDelta = totalTicks - this._prevTotalTicks;
+        if (totalDelta <= 0) return [];
+
+        const rowsByName = new Map();
+        for (const process of processes) {
+            const prevTicks = this._prevTicksByProcess.get(process.key);
+            if (prevTicks == null) continue;
+
+            const tickDelta = process.cpuTicks - prevTicks;
+            if (tickDelta <= 0) continue;
+
+            const row = rowsByName.get(process.name) ?? {
+                name: process.name,
+                percent: 0,
+            };
+            row.percent += (tickDelta / totalDelta) * 100;
+            rowsByName.set(process.name, row);
+        }
+
+        return topRows([...rowsByName.values()], row => row.percent);
+    }
+
+    _memoryRows(processes) {
+        const rowsByName = new Map();
+        for (const process of processes) {
+            if (process.rssKb <= 0) continue;
+
+            const row = rowsByName.get(process.name) ?? {
+                name: process.name,
+                rssKb: 0,
+            };
+            row.rssKb += process.rssKb;
+            rowsByName.set(process.name, row);
+        }
+
+        return topRows([...rowsByName.values()], row => row.rssKb);
+    }
+}
+
+export class CpuSampler {
+    constructor(processSampler) {
+        this._processSampler = processSampler;
         this._prevTotal = 0;
         this._prevIdle = 0;
         this._initialised = false;
     }
 
     sample() {
-        const text = readProc('/proc/stat');
-        if (!text) return null;
-        const line = text.split('\n', 1)[0];
-        const parts = line.trim().split(/\s+/).slice(1).map(Number);
-        if (parts.length < 4) return null;
-        const idle = parts[3] + (parts[4] || 0);
-        const total = parts.reduce((a, b) => a + b, 0);
+        const times = readCpuTimes();
+        if (times == null) return null;
+
+        const {idle, total} = times;
+        const processSnapshot = this._processSampler.sample(total);
         const dTotal = total - this._prevTotal;
         const dIdle = idle - this._prevIdle;
         this._prevTotal = total;
@@ -79,7 +229,10 @@ export class CpuSampler {
             return null;
         }
         if (dTotal <= 0) return null;
-        return Math.max(0, Math.min(100, (1 - dIdle / dTotal) * 100));
+        return {
+            percent: Math.max(0, Math.min(100, (1 - dIdle / dTotal) * 100)),
+            processes: processSnapshot.cpu,
+        };
     }
 }
 
@@ -95,11 +248,18 @@ function parseMeminfo() {
 }
 
 export class MemorySampler {
+    constructor(processSampler) {
+        this._processSampler = processSampler;
+    }
+
     sample() {
         const m = parseMeminfo();
         if (!m || !m.MemTotal) return null;
         const avail = m.MemAvailable ?? (m.MemFree + (m.Buffers || 0) + (m.Cached || 0));
-        return ((m.MemTotal - avail) / m.MemTotal) * 100;
+        return {
+            percent: ((m.MemTotal - avail) / m.MemTotal) * 100,
+            processes: this._processSampler.sample(null).memory,
+        };
     }
 }
 
@@ -169,17 +329,162 @@ export class FanSpeedSampler {
 }
 
 const SKIP_PREFIXES = ['lo', 'docker', 'br-', 'virbr', 'veth', 'tun', 'tap'];
+const SS_USER_RE = /users:\(\("([^"]+)",pid=(\d+),fd=\d+\)/;
+const SS_BYTES_RE = /\bbytes_sent:(\d+).*?\bbytes_received:(\d+)/;
+
+function parseTcpSockets(text) {
+    const sockets = new Map();
+    let socket = null;
+
+    for (const line of text.split('\n')) {
+        if (!line) continue;
+
+        if (!line.startsWith(' ') && !line.startsWith('\t')) {
+            const user = line.match(SS_USER_RE);
+            const parts = line.trim().split(/\s+/);
+            if (user == null || parts.length < 5) {
+                socket = null;
+                continue;
+            }
+
+            const name = user[1];
+            const pid = parseInt(user[2], 10);
+            if (!Number.isFinite(pid)) {
+                socket = null;
+                continue;
+            }
+
+            socket = {
+                id: `${parts[3]}\0${parts[4]}\0${name}\0${pid}`,
+                name,
+                pid,
+                txBytes: 0,
+                rxBytes: 0,
+            };
+            continue;
+        }
+
+        if (socket == null) continue;
+
+        const bytes = line.match(SS_BYTES_RE);
+        if (bytes == null) {
+            socket = null;
+            continue;
+        }
+
+        socket.txBytes = Number.parseInt(bytes[1], 10);
+        socket.rxBytes = Number.parseInt(bytes[2], 10);
+        if (Number.isFinite(socket.txBytes) && Number.isFinite(socket.rxBytes))
+            sockets.set(socket.id, socket);
+        socket = null;
+    }
+
+    return sockets;
+}
+
+class NetworkProcessSampler {
+    constructor() {
+        this._prevAt = 0;
+        this._prevSockets = new Map();
+        this._lastStartAt = 0;
+        this._running = false;
+        this._rows = [];
+        this._error = null;
+        this._updatedAt = 0;
+    }
+
+    sample() {
+        const now = GLib.get_monotonic_time();
+        if (!this._running && now - this._lastStartAt >= PROCESS_SAMPLE_MIN_US)
+            this._start(now);
+
+        return {
+            rows: this._rows,
+            error: this._error,
+            updatedAt: this._updatedAt,
+        };
+    }
+
+    _start(now) {
+        this._running = true;
+        this._lastStartAt = now;
+
+        let proc;
+        try {
+            proc = Gio.Subprocess.new(
+                ['ss', '-Htinp'],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE
+            );
+        } catch (e) {
+            this._running = false;
+            this._error = '`ss` unavailable';
+            this._rows = [];
+            return;
+        }
+
+        proc.communicate_utf8_async(null, null, (p, res) => {
+            try {
+                const [, stdout] = p.communicate_utf8_finish(res);
+                this._finish(stdout ?? '', GLib.get_monotonic_time());
+            } catch (e) {
+                this._error = '`ss` failed';
+                this._rows = [];
+            } finally {
+                this._running = false;
+            }
+        });
+    }
+
+    _finish(text, now) {
+        const sockets = parseTcpSockets(text);
+        const byProcess = new Map();
+
+        if (this._prevAt > 0) {
+            const dt = Math.max(0.001, (now - this._prevAt) / 1_000_000);
+
+            for (const [id, socket] of sockets) {
+                const prev = this._prevSockets.get(id);
+                if (prev == null) continue;
+
+                const rxBytes = socket.rxBytes - prev.rxBytes;
+                const txBytes = socket.txBytes - prev.txBytes;
+                if (rxBytes < 0 || txBytes < 0) continue;
+
+                const key = socket.name;
+                const row = byProcess.get(key) ?? {
+                    name: socket.name,
+                    rxBps: 0,
+                    txBps: 0,
+                };
+                row.rxBps += rxBytes / dt;
+                row.txBps += txBytes / dt;
+                byProcess.set(key, row);
+            }
+        }
+
+        this._prevAt = now;
+        this._prevSockets = sockets;
+        this._error = null;
+        this._updatedAt = now;
+        this._rows = [...byProcess.values()]
+            .filter(row => row.rxBps > 0 || row.txBps > 0)
+            .sort((a, b) => (b.rxBps + b.txBps) - (a.rxBps + a.txBps))
+            .slice(0, PROCESS_ROWS);
+    }
+}
 
 export class NetworkSampler {
     constructor() {
         this._prevRx = 0;
         this._prevTx = 0;
         this._prevAt = 0;
+        this._processSampler = new NetworkProcessSampler();
     }
 
     sample() {
         const text = readProc('/proc/net/dev');
         if (!text) return null;
+        const processes = this._processSampler.sample();
         let rx = 0, tx = 0;
         for (const line of text.split('\n')) {
             const idx = line.indexOf(':');
@@ -202,6 +507,7 @@ export class NetworkSampler {
         const result = {
             rxBps: Math.max(0, (rx - this._prevRx) / dt),
             txBps: Math.max(0, (tx - this._prevTx) / dt),
+            processes,
         };
         this._prevRx = rx;
         this._prevTx = tx;

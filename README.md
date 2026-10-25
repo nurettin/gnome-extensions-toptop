@@ -19,6 +19,7 @@ If that is a problem for you, fork it.
 ## What it does
 
 - Six panel indicators: CPU usage (%), CPU temperature, memory usage (%), swap usage (%), network throughput (rx + tx, sparkline of the sum), fan speed
+- CPU, memory, and network indicators hover/click show cached top-3 process breakdowns
 - Fan speed uses a speedometer gauge instead of a sparkline
 - Sticky-peak-with-decay autoscaling on the network graph so spikes are visible without the baseline jittering
 - Configurable sample interval, history length, graph width, per-indicator visibility
@@ -52,6 +53,7 @@ gsettings set in.nurett.toptop show-fan-speed true
 ## Requirements
 
 - GNOME Shell 50
+- `ss` from iproute2 for the network process breakdown
 
 ## License
 

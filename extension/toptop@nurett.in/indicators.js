@@ -1,6 +1,7 @@
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 
 function clamp01(value) {
@@ -44,6 +45,11 @@ class Indicator extends PanelMenu.Button {
             ? value
             : value.rxBps + value.txBps);
         this._drawMode = options.drawMode ?? 'sparkline';
+        this._detailsTitle = options.detailsTitle ?? null;
+        this._detailsFormat = options.detailsFormat ?? null;
+        this._detailLines = [];
+        this._hoverLabel = null;
+        this._detailsPinned = false;
         this._history = new RingBuffer(options.historySize);
         this._color = options.color;
         this._title = options.title ?? '';
@@ -66,6 +72,9 @@ class Indicator extends PanelMenu.Button {
 
         this._box.add_child(this._area);
         this.add_child(this._box);
+
+        if (this._detailsFormat)
+            this._initDetails();
     }
 
     setGraphWidth(w) {
@@ -100,7 +109,92 @@ class Indicator extends PanelMenu.Button {
         this._peak = Math.max(this._peak, this._minPeak);
 
         this._labelText = this._format(value, this._peak);
+        if (this._detailsFormat)
+            this.setDetails(this._detailsFormat(value));
         this._area.queue_repaint();
+    }
+
+    setDetails(lines) {
+        this._detailLines = lines.length > 0 ? lines : ['No data'];
+        if (this._hoverLabel?.visible) {
+            this._hoverLabel.set_text(this._detailsText());
+            this._positionDetailsHover();
+        }
+    }
+
+    _initDetails() {
+        this.setDetails(['Waiting for process samples']);
+        this.connect('enter-event', () => {
+            this._showDetailsHover();
+            return Clutter.EVENT_PROPAGATE;
+        });
+        this.connect('leave-event', () => {
+            if (!this._detailsPinned)
+                this._hideDetailsHover();
+            return Clutter.EVENT_PROPAGATE;
+        });
+        this.connect('button-press-event', () => {
+            this._detailsPinned = !this._detailsPinned;
+            if (this._detailsPinned)
+                this._showDetailsHover();
+            else
+                this._hideDetailsHover();
+            return Clutter.EVENT_STOP;
+        });
+    }
+
+    _detailsText() {
+        return [
+            ...(this._detailsTitle ? [this._detailsTitle] : []),
+            ...this._detailLines,
+        ].join('\n');
+    }
+
+    _showDetailsHover() {
+        if (!this._detailsFormat) return;
+        if (this._hoverLabel == null) {
+            this._hoverLabel = new St.Label({
+                style_class: 'toptop-hover-details',
+            });
+            Main.layoutManager.addChrome(this._hoverLabel);
+            this._hoverLabel.hide();
+        }
+
+        this._hoverLabel.set_text(this._detailsText());
+        this._hoverLabel.show();
+        this._positionDetailsHover();
+    }
+
+    _hideDetailsHover() {
+        this._hoverLabel?.hide();
+    }
+
+    _positionDetailsHover() {
+        if (this._hoverLabel == null) return;
+
+        const [actorX, actorY] = this.get_transformed_position();
+        const [actorWidth, actorHeight] = this.get_transformed_size();
+        const [, preferredWidth] = this._hoverLabel.get_preferred_width(-1);
+        const [, preferredHeight] = this._hoverLabel.get_preferred_height(preferredWidth);
+        const width = Math.ceil(preferredWidth);
+        const height = Math.ceil(preferredHeight);
+        const monitor = Main.layoutManager.findMonitorForActor?.(this)
+            ?? Main.layoutManager.primaryMonitor;
+        const margin = 8;
+        const minX = monitor.x + margin;
+        const maxX = monitor.x + monitor.width - width - margin;
+        const x = Math.max(minX, Math.min(maxX, actorX + actorWidth / 2 - width / 2));
+        let y = actorY + actorHeight + 6;
+        if (y + height > monitor.y + monitor.height - margin)
+            y = actorY - height - 6;
+
+        this._hoverLabel.set_position(Math.floor(x), Math.floor(y));
+    }
+
+    destroy() {
+        this._hoverLabel?.destroy();
+        this._hoverLabel = null;
+        super.destroy();
     }
 
     _onRepaint(area) {
