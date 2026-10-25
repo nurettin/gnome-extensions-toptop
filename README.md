@@ -39,15 +39,16 @@ gnome-extensions enable toptop@nurett.in
 ## Configure
 
 ```bash
-gsettings set in.nurett.toptop interval-ms 1000      # sample period (200..10000)
-gsettings set in.nurett.toptop history-size 60       # samples retained (10..600)
-gsettings set in.nurett.toptop graph-width 36        # sparkline width in px (20..240)
-gsettings set in.nurett.toptop show-cpu true
-gsettings set in.nurett.toptop show-cpu-temperature true
-gsettings set in.nurett.toptop show-memory true
-gsettings set in.nurett.toptop show-swap true
-gsettings set in.nurett.toptop show-network true
-gsettings set in.nurett.toptop show-fan-speed true
+schemas=~/.local/share/gnome-shell/extensions/toptop@nurett.in/schemas
+gsettings --schemadir $schemas set in.nurett.toptop interval-ms 1000      # sample period (200..10000)
+gsettings --schemadir $schemas set in.nurett.toptop history-size 60       # samples retained (10..600)
+gsettings --schemadir $schemas set in.nurett.toptop graph-width 36        # sparkline width in px (20..240)
+gsettings --schemadir $schemas set in.nurett.toptop show-cpu true
+gsettings --schemadir $schemas set in.nurett.toptop show-cpu-temperature true
+gsettings --schemadir $schemas set in.nurett.toptop show-memory true
+gsettings --schemadir $schemas set in.nurett.toptop show-swap true
+gsettings --schemadir $schemas set in.nurett.toptop show-network true
+gsettings --schemadir $schemas set in.nurett.toptop show-fan-speed true
 ```
 
 ## Requirements
