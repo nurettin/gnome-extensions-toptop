@@ -492,9 +492,10 @@ class NetworkProcessSampler {
     }
 }
 
-// Files under 1M are skipped so sort sees thousands of lines, not millions.
+// Hidden files and folders (caches, app state) are pruned unvisited; files under 1M are skipped
+// so sort sees thousands of lines, not millions.
 const LARGEST_FILES_SCRIPT =
-    'find "$1" -xdev -type f -size +1M -printf \'%s\\t%p\\n\' 2>/dev/null | sort -nr | head -n "$2"';
+    'find "$1" -xdev -name \'.*\' -prune -o -type f -size +1M -printf \'%s\\t%p\\n\' 2>/dev/null | sort -nr | head -n "$2"';
 const LARGEST_FILE_RE = /^(\d+)\t(.+)$/;
 
 function parseLargestFiles(text) {
