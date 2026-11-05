@@ -1,6 +1,6 @@
 # toptop
 
-CPU, memory, temperature, fan, and network indicators in the GNOME 50 top bar.
+CPU, memory, temperature, fan, network, and disk indicators in the GNOME 50 top bar.
 
 ![screenshot](docs/screenshot.png)
 
@@ -18,8 +18,9 @@ If that is a problem for you, fork it.
 
 ## What it does
 
-- Six panel indicators: CPU usage (%), CPU temperature, memory usage (%), swap usage (%), network throughput (rx + tx, sparkline of the sum), fan speed
+- Seven panel indicators: CPU usage (%), CPU temperature, memory usage (%), swap usage (%), network throughput (rx + tx, sparkline of the sum), fan speed, free space on `/home`
 - CPU, memory, and network indicators hover/click show cached top-3 process breakdowns
+- Disk indicator hover/click shows the 3 largest files in `/home`, rescanned every 10 minutes at low priority
 - Fan speed uses a speedometer gauge instead of a sparkline
 - Sticky-peak-with-decay autoscaling on the network graph so spikes are visible without the baseline jittering
 - Configurable sample interval, history length, graph width, per-indicator visibility
@@ -49,6 +50,7 @@ gsettings --schemadir $schemas set in.nurett.toptop show-memory true
 gsettings --schemadir $schemas set in.nurett.toptop show-swap true
 gsettings --schemadir $schemas set in.nurett.toptop show-network true
 gsettings --schemadir $schemas set in.nurett.toptop show-fan-speed true
+gsettings --schemadir $schemas set in.nurett.toptop show-disk true
 ```
 
 ## Requirements

@@ -7,6 +7,7 @@
     <value nick="swap" value="3"/>
     <value nick="network" value="4"/>
     <value nick="fan-speed" value="5"/>
+    <value nick="disk" value="6"/>
   </enum>
 
   <schema id="in.nurett.toptop" path="/in/nurett/toptop/">
@@ -43,6 +44,10 @@
     <key name="show-fan-speed" type="b">
       <default>true</default>
       <summary>Show fan speed indicator</summary>
+    </key>
+    <key name="show-disk" type="b">
+      <default>true</default>
+      <summary>Show /home free space indicator</summary>
     </key>
     <key name="graph-width" type="i">
       <default>36</default>

@@ -10,11 +10,15 @@ import {
     SwapSampler,
     NetworkSampler,
     FanSpeedSampler,
+    DiskSampler,
 } from './samplers.js';
 import {Indicator} from './indicators.js';
 
+const DISK_PATH = '/home';
+const PROCESS_WAITING_TEXT = 'Waiting for process samples';
+
 function formatBytes(bytes) {
-    const units = ['B', 'K', 'M', 'G'];
+    const units = ['B', 'K', 'M', 'G', 'T'];
     let v = bytes, i = 0;
     while (v >= 999.5 && i < units.length - 1) { v /= 1024; i++; }
     let s;
@@ -38,46 +42,57 @@ function formatProcessPercent(percent) {
     return `${percent < 10 ? percent.toFixed(1) : percent.toFixed(0)}%`;
 }
 
-function formatProcessRows(processes, emptyText, formatValue) {
-    if (processes == null || processes.updatedAt === 0)
-        return ['Waiting for process samples'];
+function formatPath(path, width) {
+    const home = GLib.get_home_dir();
+    const text = path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+    return text.length > width ? `…${text.slice(-(width - 1))}` : text;
+}
 
-    const rows = processes.rows ?? [];
-    if (rows.length === 0) return [emptyText];
+function formatRows(snapshot, waitingText, emptyText, formatRow) {
+    if (snapshot.error != null) return [snapshot.error];
+    if (snapshot.updatedAt === 0) return [waitingText];
+    if (snapshot.rows.length === 0) return [emptyText];
+    return snapshot.rows.map(formatRow);
+}
 
-    return rows.map(row => {
-        const name = formatProcessName(row.name, 18).padEnd(18);
-        return `${name} ${formatValue(row)}`;
-    });
+function formatProcessRow(name, value) {
+    return `${formatProcessName(name, 18).padEnd(18)} ${value}`;
 }
 
 function formatCpuDetails(v) {
-    return formatProcessRows(
-        v?.processes,
+    return formatRows(
+        v.processes,
+        PROCESS_WAITING_TEXT,
         'No CPU process activity',
-        row => formatProcessPercent(row.percent)
+        row => formatProcessRow(row.name, formatProcessPercent(row.percent))
     );
 }
 
 function formatMemoryDetails(v) {
-    return formatProcessRows(
-        v?.processes,
+    return formatRows(
+        v.processes,
+        PROCESS_WAITING_TEXT,
         'No memory process data',
-        row => formatBytes(row.rssKb * 1024)
+        row => formatProcessRow(row.name, formatBytes(row.rssKb * 1024))
     );
 }
 
 function formatNetworkDetails(v) {
-    const processes = v?.processes;
-    if (processes == null || processes.updatedAt === 0)
-        return ['Waiting for process samples'];
-    if (processes.error != null)
-        return [processes.error];
+    return formatRows(
+        v.processes,
+        PROCESS_WAITING_TEXT,
+        'No process traffic',
+        row => formatProcessName(row.name, 24)
+    );
+}
 
-    const rows = processes.rows ?? [];
-    if (rows.length === 0) return ['No process traffic'];
-
-    return rows.map(row => formatProcessName(row.name, 24));
+function formatDiskDetails(v) {
+    return formatRows(
+        v.files,
+        `Scanning ${DISK_PATH}`,
+        'No files over 1M',
+        row => `${formatBytes(row.bytes).padStart(5)} ${formatPath(row.path, 60)}`
+    );
 }
 
 function formatPercent(value) {
@@ -193,6 +208,23 @@ const SPECS = [
             drawMode: 'speedometer',
             labelPosition: 'top-right',
             format: formatRpm,
+        },
+    },
+    {
+        kind: 'disk',
+        role: 'toptop-disk',
+        showKey: 'show-disk',
+        position: 6,
+        sampler: () => new DiskSampler(DISK_PATH),
+        options: {
+            fixedMax: 100,
+            color: [0.95, 0.55, 0.95],
+            title: 'DSK',
+            initialLabel: '--',
+            scalar: samplePercent,
+            format: v => formatBytes(v.freeBytes),
+            detailsTitle: `Largest files in ${DISK_PATH}`,
+            detailsFormat: formatDiskDetails,
         },
     },
 ];

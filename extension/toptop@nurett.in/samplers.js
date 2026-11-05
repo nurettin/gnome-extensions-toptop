@@ -42,7 +42,8 @@ function listDir(path) {
 
 const HWMON_DIR = '/sys/class/hwmon';
 const PROCESS_SAMPLE_MIN_US = 750_000;
-const PROCESS_ROWS = 3;
+const LARGEST_FILES_SCAN_US = 10 * 60 * 1_000_000;
+const TOP_ROWS = 3;
 const PROC_PID_RE = /^\d+$/;
 const VM_RSS_RE = /^VmRSS:\s+(\d+)\s+kB$/m;
 
@@ -122,7 +123,48 @@ function topRows(rows, valueOf) {
     return rows
         .filter(row => valueOf(row) > 0)
         .sort((a, b) => valueOf(b) - valueOf(a))
-        .slice(0, PROCESS_ROWS);
+        .slice(0, TOP_ROWS);
+}
+
+// Runs argv asynchronously at most once per intervalUs, never overlapping.
+class PeriodicCommand {
+    constructor(argv, intervalUs, onFinish) {
+        this._argv = argv;
+        this._intervalUs = intervalUs;
+        this._onFinish = onFinish;
+        this._lastStartAt = -Infinity;
+        this._running = false;
+    }
+
+    poll() {
+        const now = GLib.get_monotonic_time();
+        if (this._running || now - this._lastStartAt < this._intervalUs) return;
+        this._running = true;
+        this._lastStartAt = now;
+
+        let proc;
+        try {
+            proc = Gio.Subprocess.new(
+                this._argv,
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE
+            );
+        } catch (e) {
+            this._running = false;
+            this._onFinish(null, `\`${this._argv[0]}\` unavailable`);
+            return;
+        }
+
+        proc.communicate_utf8_async(null, null, (p, res) => {
+            try {
+                const [, stdout] = p.communicate_utf8_finish(res);
+                this._onFinish(stdout ?? '', null);
+            } catch (e) {
+                this._onFinish(null, `\`${this._argv[0]}\` failed`);
+            } finally {
+                this._running = false;
+            }
+        });
+    }
 }
 
 export class ProcessSampler {
@@ -386,18 +428,18 @@ class NetworkProcessSampler {
     constructor() {
         this._prevAt = 0;
         this._prevSockets = new Map();
-        this._lastStartAt = 0;
-        this._running = false;
         this._rows = [];
         this._error = null;
         this._updatedAt = 0;
+        this._command = new PeriodicCommand(
+            ['ss', '-Htinp'],
+            PROCESS_SAMPLE_MIN_US,
+            (stdout, error) => this._finish(stdout, error)
+        );
     }
 
     sample() {
-        const now = GLib.get_monotonic_time();
-        if (!this._running && now - this._lastStartAt >= PROCESS_SAMPLE_MIN_US)
-            this._start(now);
-
+        this._command.poll();
         return {
             rows: this._rows,
             error: this._error,
@@ -405,37 +447,14 @@ class NetworkProcessSampler {
         };
     }
 
-    _start(now) {
-        this._running = true;
-        this._lastStartAt = now;
-
-        let proc;
-        try {
-            proc = Gio.Subprocess.new(
-                ['ss', '-Htinp'],
-                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE
-            );
-        } catch (e) {
-            this._running = false;
-            this._error = '`ss` unavailable';
+    _finish(text, error) {
+        if (error != null) {
+            this._error = error;
             this._rows = [];
             return;
         }
 
-        proc.communicate_utf8_async(null, null, (p, res) => {
-            try {
-                const [, stdout] = p.communicate_utf8_finish(res);
-                this._finish(stdout ?? '', GLib.get_monotonic_time());
-            } catch (e) {
-                this._error = '`ss` failed';
-                this._rows = [];
-            } finally {
-                this._running = false;
-            }
-        });
-    }
-
-    _finish(text, now) {
+        const now = GLib.get_monotonic_time();
         const sockets = parseTcpSockets(text);
         const byProcess = new Map();
 
@@ -469,7 +488,49 @@ class NetworkProcessSampler {
         this._rows = [...byProcess.values()]
             .filter(row => row.rxBps > 0 || row.txBps > 0)
             .sort((a, b) => (b.rxBps + b.txBps) - (a.rxBps + a.txBps))
-            .slice(0, PROCESS_ROWS);
+            .slice(0, TOP_ROWS);
+    }
+}
+
+// Files under 1M are skipped so sort sees thousands of lines, not millions.
+const LARGEST_FILES_SCRIPT =
+    'find "$1" -xdev -type f -size +1M -printf \'%s\\t%p\\n\' 2>/dev/null | sort -nr | head -n "$2"';
+const LARGEST_FILE_RE = /^(\d+)\t(.+)$/;
+
+function parseLargestFiles(text) {
+    return text.split('\n')
+        .map(line => line.match(LARGEST_FILE_RE))
+        .filter(match => match != null)
+        .map(match => ({bytes: Number.parseInt(match[1], 10), path: match[2]}));
+}
+
+export class DiskSampler {
+    constructor(path) {
+        this._file = Gio.File.new_for_path(path);
+        this._largestFiles = {rows: [], error: null, updatedAt: 0};
+        this._command = new PeriodicCommand(
+            ['nice', '-n', '19', 'sh', '-c', LARGEST_FILES_SCRIPT, 'sh', path, String(TOP_ROWS)],
+            LARGEST_FILES_SCAN_US,
+            (stdout, error) => {
+                this._largestFiles = {
+                    rows: error == null ? parseLargestFiles(stdout) : [],
+                    error,
+                    updatedAt: GLib.get_monotonic_time(),
+                };
+            }
+        );
+    }
+
+    sample() {
+        this._command.poll();
+        const info = this._file.query_filesystem_info('filesystem::free,filesystem::used', null);
+        const freeBytes = info.get_attribute_uint64('filesystem::free');
+        const usedBytes = info.get_attribute_uint64('filesystem::used');
+        return {
+            percent: (usedBytes / (usedBytes + freeBytes)) * 100,
+            freeBytes,
+            files: this._largestFiles,
+        };
     }
 }
 
