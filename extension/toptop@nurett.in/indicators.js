@@ -34,6 +34,7 @@ export const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
     _init(role, options) {
         super._init(0.0, role, true);
+        this.add_style_class_name('toptop-button');
         this._fixedMax = options.fixedMax ?? null;
         this._minPeak = options.minPeak ?? 0;
         this._format = options.format;
