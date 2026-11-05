@@ -53,7 +53,7 @@ gsettings --schemadir $schemas set in.nurett.toptop show-fan-speed true
 
 ## Requirements
 
-- GNOME Shell 50
+- GNOME Shell 50 or 51
 - `ss` from iproute2 for the network process breakdown
 
 ## License
